@@ -216,6 +216,7 @@
   const LEFT_WALL = WALL_THICKNESS;
   const RIGHT_WALL = WIDTH - WALL_THICKNESS;
   const DEADLINE_Y = 85;
+  const OVERFLOW_LIMIT_MS = 1000; // 1秒間連続で超えたら終了
   const DROP_Y = 42;
 
   const FRUITS = [
@@ -252,6 +253,8 @@
   let canDrop = true;
   let dropCooldown = 0;
   let isGameOver = false;
+  let overflowMs = 0;
+  let lastFrameTime = null;
   let nextId = 1;
 
   const GRAVITY = 0.42;
@@ -269,6 +272,8 @@
     score = 0;
     updateScore(0);
     isGameOver = false;
+    overflowMs = 0;
+    lastFrameTime = null;
     canDrop = true;
     dropCooldown = 0;
     currentFruitType = randomDropType();
@@ -379,7 +384,7 @@
       angle: 0,
       vAngle: 0,
       merged: false,
-      overLineFrames: 0
+      hasEnteredField: false
     });
 
     canDrop = false;
@@ -389,7 +394,7 @@
     drawNextFruit();
   }
 
-  function stepPhysics() {
+  function stepPhysics(elapsedMs = 1000 / 60) {
     if (isGameOver) return;
 
     if (!canDrop) {
@@ -410,6 +415,9 @@
         b.y += b.vy * dt;
         b.angle += b.vAngle * dt;
 
+        // 落下直後のフルーツは、線の下に入るか他の果物に接触するまで除外
+        if (b.y - b.radius >= DEADLINE_Y) b.hasEnteredField = true;
+
         // 壁との衝突
         if (b.x - b.radius < LEFT_WALL) {
           b.x = LEFT_WALL + b.radius;
@@ -423,6 +431,7 @@
 
         // 床との衝突
         if (b.y + b.radius > FLOOR_Y) {
+          b.hasEnteredField = true;
           b.y = FLOOR_Y - b.radius;
           b.vy = -b.vy * RESTITUTION;
           b.vx *= FRICTION;
@@ -446,6 +455,8 @@
           const minDist = b1.radius + b2.radius;
 
           if (distSq < minDist * minDist) {
+            b1.hasEnteredField = true;
+            b2.hasEnteredField = true;
             // 同じ種類なら合体
             if (b1.type === b2.type) {
               b1.merged = true;
@@ -472,7 +483,7 @@
                   angle: 0,
                   vAngle: 0,
                   merged: false,
-                  overLineFrames: 0
+                  hasEnteredField: true
                 });
               } else {
                 // スイカ同士が消えたボーナス
@@ -520,23 +531,20 @@
         }
       }
 
-      if (toAdd.length > 0) {
+      if (toAdd.length > 0 || bodies.some(b => b.merged)) {
         bodies = bodies.filter(b => !b.merged).concat(toAdd);
       }
     }
 
-    // ゲームオーバー判定（デッドラインを超えた状態が続いたら終了）
-    for (let i = 0; i < bodies.length; i++) {
-      const b = bodies[i];
-      if (b.y - b.radius < DEADLINE_Y && Math.abs(b.vy) < 1.2) {
-        b.overLineFrames++;
-        if (b.overLineFrames > 90) { // 約1.5秒ラインオーバーでゲームオーバー
-          triggerGameOver();
-          break;
-        }
-      } else {
-        b.overLineFrames = 0;
-      }
+    // 速度に関係なく、容器内のフルーツが線を越え続けたら終了。
+    // 待機中・まだ何にも触れていない落下直後の果物は対象外。
+    const overflowing = bodies.some(b =>
+      !b.merged && b.hasEnteredField && b.y - b.radius < DEADLINE_Y
+    );
+    overflowMs = overflowing ? overflowMs + elapsedMs : 0;
+    if (overflowMs >= OVERFLOW_LIMIT_MS) {
+      triggerGameOver();
+      return;
     }
 
     // パーティクル更新
@@ -566,8 +574,8 @@
     ctx.setLineDash([6, 6]);
     ctx.moveTo(LEFT_WALL, DEADLINE_Y);
     ctx.lineTo(RIGHT_WALL, DEADLINE_Y);
-    ctx.strokeStyle = 'rgba(217, 83, 79, 0.6)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = overflowMs > 0 ? '#e52c2c' : 'rgba(217, 83, 79, 0.6)';
+    ctx.lineWidth = overflowMs > 0 ? 3 : 2;
     ctx.stroke();
     ctx.restore();
 
@@ -614,8 +622,10 @@
     ctx.fillRect(0, FLOOR_Y, WIDTH, WALL_THICKNESS);
   }
 
-  function loop() {
-    stepPhysics();
+  function loop(now = performance.now()) {
+    const elapsedMs = lastFrameTime === null ? 0 : Math.max(0, Math.min(100, now - lastFrameTime));
+    lastFrameTime = now;
+    stepPhysics(elapsedMs);
     render();
     requestAnimationFrame(loop);
   }
