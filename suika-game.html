@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>スイカゲーム</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #fdf6e3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #5c4033;
+      overflow: hidden;
+    }
+    .game-wrapper {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      padding: 15px;
+      background: #fff8eb;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(92, 64, 51, 0.15);
+      border: 4px solid #e6ccb2;
+    }
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 140px;
+    }
+    .box {
+      background: #ffffff;
+      border: 3px solid #ddb892;
+      border-radius: 14px;
+      padding: 12px;
+      text-align: center;
+    }
+    .box-title {
+      font-size: 0.9rem;
+      font-weight: bold;
+      color: #7f5539;
+      margin-bottom: 6px;
+    }
+    .score-val {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #d9534f;
+    }
+    .best-val {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #b08968;
+    }
+    #nextCanvas {
+      display: block;
+      margin: 0 auto;
+    }
+    .evo-list {
+      font-size: 0.78rem;
+      text-align: left;
+      line-height: 1.5;
+      padding-left: 4px;
+    }
+    .evo-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .evo-dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .canvas-container {
+      position: relative;
+      width: 360px;
+      height: 540px;
+      background: #fffdf9;
+      border-radius: 0 0 16px 16px;
+      box-shadow: inset 0 0 15px rgba(221, 184, 146, 0.2);
+      cursor: crosshair;
+      touch-action: none;
+    }
+    canvas#gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 248, 235, 0.9);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-radius: 0 0 16px 16px;
+      z-index: 10;
+    }
+    .overlay.active {
+      display: flex;
+    }
+    .overlay h2 {
+      font-size: 2rem;
+      color: #d9534f;
+      margin: 0 0 10px 0;
+    }
+    .overlay p {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin: 0 0 20px 0;
+    }
+    .btn {
+      background: #ff7b54;
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #d9534f;
+      transition: transform 0.1s;
+    }
+    .btn:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #d9534f;
+    }
+    @media (max-width: 600px) {
+      .game-wrapper {
+        flex-direction: column;
+        align-items: center;
+        padding: 10px;
+        gap: 10px;
+      }
+      .side-panel {
+        flex-direction: row;
+        width: 360px;
+        justify-content: space-between;
+      }
+      .box {
+        flex: 1;
+        padding: 8px;
+      }
+      .evo-box {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="game-wrapper">
+  <div class="canvas-container" id="canvasContainer">
+    <canvas id="gameCanvas" width="360" height="540"></canvas>
+    <div class="overlay" id="gameOverOverlay">
+      <h2>GAME OVER</h2>
+      <p>スコア: <span id="finalScore">0</span></p>
+      <button class="btn" id="restartBtn">もういちど遊ぶ</button>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="box">
+      <div class="box-title">スコア</div>
+      <div class="score-val" id="scoreDisplay">0</div>
+      <div class="box-title" style="margin-top:8px;">ベスト</div>
+      <div class="best-val" id="bestDisplay">0</div>
+    </div>
+
+    <div class="box">
+      <div class="box-title">ネクスト</div>
+      <canvas id="nextCanvas" width="70" height="70"></canvas>
+    </div>
+
+    <div class="box evo-box">
+      <div class="box-title">シンカの輪</div>
+      <div class="evo-list" id="evoList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const nextCanvas = document.getElementById('nextCanvas');
+  const nextCtx = nextCanvas.getContext('2d');
+
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const bestDisplay = document.getElementById('bestDisplay');
+  const finalScoreDisplay = document.getElementById('finalScore');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const restartBtn = document.getElementById('restartBtn');
+  const evoListEl = document.getElementById('evoList');
+
+  const WIDTH = canvas.width;
+  const HEIGHT = canvas.height;
+  const WALL_THICKNESS = 12;
+  const FLOOR_Y = HEIGHT - WALL_THICKNESS;
+  const LEFT_WALL = WALL_THICKNESS;
+  const RIGHT_WALL = WIDTH - WALL_THICKNESS;
+  const DEADLINE_Y = 85;
+  const DROP_Y = 42;
+
+  const FRUITS = [
+    { name: 'さくらんぼ', radius: 14, color: '#ff3b5c', stroke: '#c91836', score: 1, eyeOffset: 4 },
+    { name: 'いちご',     radius: 19, color: '#ff6b81', stroke: '#d6304c', score: 3, eyeOffset: 5 },
+    { name: 'ぶどう',     radius: 25, color: '#9b5de5', stroke: '#6c35b5', score: 6, eyeOffset: 7 },
+    { name: 'デコポン',   radius: 31, color: '#ffa502', stroke: '#cc8000', score: 10, eyeOffset: 8 },
+    { name: 'かき',       radius: 38, color: '#ff7f50', stroke: '#d9572b', score: 15, eyeOffset: 10 },
+    { name: 'りんご',     radius: 46, color: '#e84118', stroke: '#b32400', score: 21, eyeOffset: 12 },
+    { name: 'なし',       radius: 54, color: '#f6e58d', stroke: '#c7b24c', score: 28, eyeOffset: 14 },
+    { name: 'もも',       radius: 63, color: '#ffcccc', stroke: '#e08e8e', score: 36, eyeOffset: 16 },
+    { name: 'パイナップル', radius: 72, color: '#f9ca24', stroke: '#c49b08', score: 45, eyeOffset: 19 },
+    { name: 'メロン',     radius: 82, color: '#badc58', stroke: '#8ab027', score: 55, eyeOffset: 22 },
+    { name: 'スイカ',     radius: 94, color: '#2ed573', stroke: '#179c4c', score: 66, eyeOffset: 25 }
+  ];
+
+  // シンカの輪リスト生成
+  FRUITS.forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'evo-item';
+    div.innerHTML = `<span class="evo-dot" style="background:${f.color};border:1px solid ${f.stroke}"></span><span>${f.name}</span>`;
+    evoListEl.appendChild(div);
+  });
+
+  let bodies = [];
+  let particles = [];
+  let score = 0;
+  let bestScore = parseInt(localStorage.getItem('suikaBestScore') || '0', 10);
+  bestDisplay.textContent = bestScore;
+
+  let currentFruitType = 0;
+  let nextFruitType = 0;
+  let dropX = WIDTH / 2;
+  let canDrop = true;
+  let dropCooldown = 0;
+  let isGameOver = false;
+  let nextId = 1;
+
+  const GRAVITY = 0.42;
+  const RESTITUTION = 0.25;
+  const FRICTION = 0.985;
+  const SUBSTEPS = 6;
+
+  function randomDropType() {
+    return Math.floor(Math.random() * 5); // さくらんぼ〜かき まで
+  }
+
+  function initGame() {
+    bodies = [];
+    particles = [];
+    score = 0;
+    updateScore(0);
+    isGameOver = false;
+    canDrop = true;
+    dropCooldown = 0;
+    currentFruitType = randomDropType();
+    nextFruitType = randomDropType();
+    drawNextFruit();
+    gameOverOverlay.classList.remove('active');
+  }
+
+  function updateScore(add) {
+    score += add;
+    scoreDisplay.textContent = score;
+    if (score > bestScore) {
+      bestScore = score;
+      bestDisplay.textContent = bestScore;
+      localStorage.setItem('suikaBestScore', bestScore);
+    }
+  }
+
+  function drawFruitShape(context, x, y, typeIndex, angle = 0) {
+    const f = FRUITS[typeIndex];
+    context.save();
+    context.translate(x, y);
+    context.rotate(angle);
+
+    // 本体
+    context.beginPath();
+    context.arc(0, 0, f.radius, 0, Math.PI * 2);
+    context.fillStyle = f.color;
+    context.fill();
+    context.lineWidth = 2.5;
+    context.strokeStyle = f.stroke;
+    context.stroke();
+
+    // スイカ模様
+    if (typeIndex === 10) {
+      context.strokeStyle = '#146b36';
+      context.lineWidth = 4;
+      for (let i = -2; i <= 2; i++) {
+        context.beginPath();
+        context.ellipse(i * 18, 0, 6, f.radius * 0.88, 0, 0, Math.PI * 2);
+        context.stroke();
+      }
+    }
+
+    // ハイライト
+    context.beginPath();
+    context.arc(-f.radius * 0.3, -f.radius * 0.3, f.radius * 0.18, 0, Math.PI * 2);
+    context.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    context.fill();
+
+    // かわいい顔
+    const eo = f.eyeOffset;
+    context.fillStyle = '#3d2c2e';
+    context.beginPath();
+    context.arc(-eo, -2, Math.max(1.8, f.radius * 0.06), 0, Math.PI * 2);
+    context.arc(eo, -2, Math.max(1.8, f.radius * 0.06), 0, Math.PI * 2);
+    context.fill();
+
+    // 口
+    context.beginPath();
+    context.strokeStyle = '#3d2c2e';
+    context.lineWidth = Math.max(1.5, f.radius * 0.04);
+    context.arc(0, 1, Math.max(2.5, f.radius * 0.09), 0.1 * Math.PI, 0.9 * Math.PI);
+    context.stroke();
+
+    context.restore();
+  }
+
+  function drawNextFruit() {
+    nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+    const f = FRUITS[nextFruitType];
+    const scale = Math.min(1, 26 / f.radius);
+    nextCtx.save();
+    nextCtx.translate(nextCanvas.width / 2, nextCanvas.height / 2);
+    nextCtx.scale(scale, scale);
+    drawFruitShape(nextCtx, 0, 0, nextFruitType, 0);
+    nextCtx.restore();
+  }
+
+  function spawnParticles(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+      const ang = (Math.PI * 2 * i) / 12 + Math.random() * 0.3;
+      const spd = 2 + Math.random() * 3.5;
+      particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        r: 3 + Math.random() * 3,
+        color,
+        life: 1.0
+      });
+    }
+  }
+
+  function dropFruit() {
+    if (!canDrop || isGameOver) return;
+    const f = FRUITS[currentFruitType];
+    const clampedX = Math.max(LEFT_WALL + f.radius, Math.min(RIGHT_WALL - f.radius, dropX));
+    bodies.push({
+      id: nextId++,
+      type: currentFruitType,
+      x: clampedX,
+      y: DROP_Y,
+      vx: 0,
+      vy: 1,
+      radius: f.radius,
+      mass: f.radius * f.radius,
+      angle: 0,
+      vAngle: 0,
+      merged: false,
+      overLineFrames: 0
+    });
+
+    canDrop = false;
+    dropCooldown = 28; // 約0.45秒のクールダウン
+    currentFruitType = nextFruitType;
+    nextFruitType = randomDropType();
+    drawNextFruit();
+  }
+
+  function stepPhysics() {
+    if (isGameOver) return;
+
+    if (!canDrop) {
+      dropCooldown--;
+      if (dropCooldown <= 0) {
+        canDrop = true;
+      }
+    }
+
+    const dt = 1 / SUBSTEPS;
+
+    for (let step = 0; step < SUBSTEPS; step++) {
+      // 重力と移動
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i];
+        b.vy += GRAVITY * dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.angle += b.vAngle * dt;
+
+        // 壁との衝突
+        if (b.x - b.radius < LEFT_WALL) {
+          b.x = LEFT_WALL + b.radius;
+          b.vx = -b.vx * RESTITUTION;
+          b.vAngle += b.vy * 0.002;
+        } else if (b.x + b.radius > RIGHT_WALL) {
+          b.x = RIGHT_WALL - b.radius;
+          b.vx = -b.vx * RESTITUTION;
+          b.vAngle -= b.vy * 0.002;
+        }
+
+        // 床との衝突
+        if (b.y + b.radius > FLOOR_Y) {
+          b.y = FLOOR_Y - b.radius;
+          b.vy = -b.vy * RESTITUTION;
+          b.vx *= FRICTION;
+          b.vAngle = b.vx / b.radius;
+        }
+      }
+
+      // フルーツ同士の衝突と合体判定
+      let toAdd = [];
+      for (let i = 0; i < bodies.length; i++) {
+        const b1 = bodies[i];
+        if (b1.merged) continue;
+
+        for (let j = i + 1; j < bodies.length; j++) {
+          const b2 = bodies[j];
+          if (b2.merged) continue;
+
+          const dx = b2.x - b1.x;
+          const dy = b2.y - b1.y;
+          const distSq = dx * dx + dy * dy;
+          const minDist = b1.radius + b2.radius;
+
+          if (distSq < minDist * minDist) {
+            // 同じ種類なら合体
+            if (b1.type === b2.type) {
+              b1.merged = true;
+              b2.merged = true;
+              const mx = (b1.x + b2.x) / 2;
+              const my = (b1.y + b2.y) / 2;
+              const earned = FRUITS[b1.type].score;
+              updateScore(earned);
+              spawnParticles(mx, my, FRUITS[b1.type].color);
+
+              // スイカ同士以外は次の段階へ進化
+              if (b1.type < FRUITS.length - 1) {
+                const nextType = b1.type + 1;
+                const nf = FRUITS[nextType];
+                toAdd.push({
+                  id: nextId++,
+                  type: nextType,
+                  x: Math.max(LEFT_WALL + nf.radius, Math.min(RIGHT_WALL - nf.radius, mx)),
+                  y: Math.min(FLOOR_Y - nf.radius, my),
+                  vx: (b1.vx + b2.vx) * 0.2,
+                  vy: -1.5,
+                  radius: nf.radius,
+                  mass: nf.radius * nf.radius,
+                  angle: 0,
+                  vAngle: 0,
+                  merged: false,
+                  overLineFrames: 0
+                });
+              } else {
+                // スイカ同士が消えたボーナス
+                updateScore(100);
+              }
+              break;
+            } else {
+              // 押し出し解決
+              const dist = Math.sqrt(distSq) || 0.001;
+              const overlap = minDist - dist;
+              const nx = dx / dist;
+              const ny = dy / dist;
+
+              const totalMass = b1.mass + b2.mass;
+              const m1Ratio = b2.mass / totalMass;
+              const m2Ratio = b1.mass / totalMass;
+
+              b1.x -= nx * overlap * m1Ratio;
+              b1.y -= ny * overlap * m1Ratio;
+              b2.x += nx * overlap * m2Ratio;
+              b2.y += ny * overlap * m2Ratio;
+
+              // 相対速度による反発
+              const rvx = b2.vx - b1.vx;
+              const rvy = b2.vy - b1.vy;
+              const velAlongNormal = rvx * nx + rvy * ny;
+
+              if (velAlongNormal < 0) {
+                const impulse = -(1 + RESTITUTION) * velAlongNormal;
+                const jImp = impulse / (1 / b1.mass + 1 / b2.mass);
+
+                b1.vx -= (jImp / b1.mass) * nx;
+                b1.vy -= (jImp / b1.mass) * ny;
+                b2.vx += (jImp / b2.mass) * nx;
+                b2.vy += (jImp / b2.mass) * ny;
+
+                // 摩擦減衰
+                b1.vx *= 0.99;
+                b2.vx *= 0.99;
+                b1.vAngle += (nx * rvy - ny * rvx) * 0.0005;
+                b2.vAngle -= (nx * rvy - ny * rvx) * 0.0005;
+              }
+            }
+          }
+        }
+      }
+
+      if (toAdd.length > 0) {
+        bodies = bodies.filter(b => !b.merged).concat(toAdd);
+      }
+    }
+
+    // ゲームオーバー判定（デッドラインを超えた状態が続いたら終了）
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      if (b.y - b.radius < DEADLINE_Y && Math.abs(b.vy) < 1.2) {
+        b.overLineFrames++;
+        if (b.overLineFrames > 90) { // 約1.5秒ラインオーバーでゲームオーバー
+          triggerGameOver();
+          break;
+        }
+      } else {
+        b.overLineFrames = 0;
+      }
+    }
+
+    // パーティクル更新
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.04;
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+      }
+    }
+  }
+
+  function triggerGameOver() {
+    isGameOver = true;
+    finalScoreDisplay.textContent = score;
+    gameOverOverlay.classList.add('active');
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+    // デッドライン（点線）
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash([6, 6]);
+    ctx.moveTo(LEFT_WALL, DEADLINE_Y);
+    ctx.lineTo(RIGHT_WALL, DEADLINE_Y);
+    ctx.strokeStyle = 'rgba(217, 83, 79, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // 落下ガイドと待機中フルーツ
+    if (canDrop && !isGameOver) {
+      const f = FRUITS[currentFruitType];
+      const clampedX = Math.max(LEFT_WALL + f.radius, Math.min(RIGHT_WALL - f.radius, dropX));
+
+      // ガイド線
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(clampedX, DROP_Y);
+      ctx.lineTo(clampedX, FLOOR_Y);
+      ctx.strokeStyle = 'rgba(176, 137, 104, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+
+      drawFruitShape(ctx, clampedX, DROP_Y, currentFruitType, 0);
+    }
+
+    // フィールド内のフルーツ描画
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      drawFruitShape(ctx, b.x, b.y, b.type, b.angle);
+    }
+
+    // パーティクル描画
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 容器（壁と床）の描画
+    ctx.fillStyle = '#ddb892';
+    ctx.fillRect(0, 30, LEFT_WALL, HEIGHT - 30);
+    ctx.fillRect(RIGHT_WALL, 30, WALL_THICKNESS, HEIGHT - 30);
+    ctx.fillRect(0, FLOOR_Y, WIDTH, WALL_THICKNESS);
+  }
+
+  function loop() {
+    stepPhysics();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function updatePointerX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = WIDTH / rect.width;
+    dropX = (clientX - rect.left) * scaleX;
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    updatePointerX(e.clientX);
+  });
+
+  canvas.addEventListener('click', e => {
+    updatePointerX(e.clientX);
+    dropFruit();
+  });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length > 0) {
+      updatePointerX(e.touches[0].clientX);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    dropFruit();
+  }, { passive: false });
+
+  restartBtn.addEventListener('click', initGame);
+
+  initGame();
+  loop();
+})();
+</script>
+</body>
+</html>
